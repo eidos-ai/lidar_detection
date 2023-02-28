@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO,
     format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
     datefmt='%H:%M:%S')
 
-def main(frame, transformations, path_to_ply_files_per_sensor, output_dir, visualize):
+def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize):
     def load_point_clouds(voxel_size=0.0):       
         pcds = []
         filenames = [str(Path(ply_file_path, f"ply_out_{frame}.ply")) for ply_file_path in path_to_ply_files_per_sensor]
@@ -116,11 +116,11 @@ def main(frame, transformations, path_to_ply_files_per_sensor, output_dir, visua
         merged_pcd += pcd
 
     # Save the merged point cloud
-    o3d.io.write_point_cloud(f"{output_dir}/merged_{frame}.ply", merged_pcd)
+    o3d.io.write_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply", merged_pcd)
 
     if visualize == True:
         # Read the merged point cloud from file
-        merged_cloud = o3d.io.read_point_cloud(f"{output_dir}/merged_{frame}.ply")
+        merged_cloud = o3d.io.read_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply")
 
         # Create a visualization window
         vis = o3d.visualization.Visualizer()
@@ -169,6 +169,6 @@ if __name__ == '__main__':
         # do for random sample of frames
         for frame in tqdm(sample_frames): 
             try:
-                main(frame, transformations, path_to_ply_files_per_sensor, output_dir, visualize)
+                main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize)
             except Exception as e:
                 print(f"Error processing file ply_out_{frame}.ply: {e}")
