@@ -8,7 +8,7 @@ import logging
 import re
 from pathlib import Path
 import random
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter 
 
 logging.basicConfig(level=logging.INFO,
     format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
@@ -117,7 +117,7 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
 
     # Save the merged point cloud
     o3d.io.write_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply", merged_pcd)
-
+    print(visualize)
     if visualize == True:
         # Read the merged point cloud from file
         merged_cloud = o3d.io.read_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply")
@@ -141,7 +141,10 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--path", default=None, required=True, help="path to pcap folder")
     parser.add_argument("-o", "--output", default="merged_clouds", required=False, help="output path to merged ply files")
     parser.add_argument("-s", "--sample", required=True, help="number of random frames to convert from pcap to ply")
-    parser.add_argument("-v", "--visualize", required=True, type=bool, help="boolean to visualize point cloud")
+    feature_parser = parser.add_mutually_exclusive_group(required=False)
+    feature_parser.add_argument('--visualize', dest='visualize', action='store_true')
+    feature_parser.add_argument('--no-visualize', dest='visualize', action='store_false')
+    parser.set_defaults(feature=True)
     args = vars(parser.parse_args())
     
     # add corresponding points and quaternions per sensor
