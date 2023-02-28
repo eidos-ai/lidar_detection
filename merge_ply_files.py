@@ -1,3 +1,4 @@
+# original code from https://github.com/petefitz19/DigitalTwinOpen3D
 
 import os
 import open3d as o3d
@@ -13,10 +14,10 @@ logging.basicConfig(level=logging.INFO,
     format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
     datefmt='%H:%M:%S')
 
-def main(frame, transformations, path_to_ply_files_per_sensor, visualize):
+def main(frame, transformations, path_to_ply_files_per_sensor, output_dir, visualize):
     def load_point_clouds(voxel_size=0.0):       
         pcds = []
-        filenames = [str(os.path.join(ply_file_path, f"ply_out_{frame}.ply")) for ply_file_path in path_to_ply_files_per_sensor]
+        filenames = [str(Path(ply_file_path, f"ply_out_{frame}.ply")) for ply_file_path in path_to_ply_files_per_sensor]
         logging.info(f"Files: {filenames}")
         for file in filenames:
             pcd = o3d.io.read_point_cloud(file)
@@ -115,11 +116,11 @@ def main(frame, transformations, path_to_ply_files_per_sensor, visualize):
         merged_pcd += pcd
 
     # Save the merged point cloud
-    o3d.io.write_point_cloud(f"merged_clouds/merged_{frame}.ply", merged_pcd)
+    o3d.io.write_point_cloud(f"{output_dir}/merged_{frame}.ply", merged_pcd)
 
     if visualize == True:
         # Read the merged point cloud from file
-        merged_cloud = o3d.io.read_point_cloud(f"merged_clouds/merged_{frame}.ply")
+        merged_cloud = o3d.io.read_point_cloud(f"{output_dir}/merged_{frame}.ply")
 
         # Create a visualization window
         vis = o3d.visualization.Visualizer()
@@ -138,7 +139,9 @@ def main(frame, transformations, path_to_ply_files_per_sensor, visualize):
 if __name__ == '__main__': 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-p", "--path", default=None, required=True, help="path to pcap folder")
+    parser.add_argument("-o", "--output", default="merged_clouds", required=False, help="output path to merged ply files")
     parser.add_argument("-s", "--sample", required=True, help="number of random frames to convert from pcap to ply")
+    parser.add_argument("-v", "--visualize", required=True, type=bool, help="boolean to visualize point cloud")
     args = vars(parser.parse_args())
     
     # add corresponding points and quaternions per sensor
@@ -150,20 +153,22 @@ if __name__ == '__main__':
             'q': (-0.021351803094148636, 0.9635326266288757, -0.005909430328756571, -0.2666722238063812), 
             'p': (-0.5344054698944092, -0.015509381890296936, 6.518174171447754)}
     ]
-    
-    pcap_dir = args["path"]
-
-    path_to_ply_files_per_sensor = []
-    for count, transformation in enumerate(transformations):
-        path_to_ply_files_per_sensor.append(Path(pcap_dir, transformation['sensor']))
-
-    # each sensor should have same amount of ply files (one per frame) and each frame number should match
-    pattern = re.compile(r'^ply_out_(\d{6}).ply$')
-    frames = [pattern.match(filename).group(1) for filename in os.listdir(path_to_ply_files_per_sensor[0]) if pattern.match(filename)]
-    n_frames = int(args["sample"])
-    sample_frames = random.sample(frames, n_frames)
-    for frame in tqdm(sample_frames): 
-        try:
-            main(frame, transformations, path_to_ply_files_per_sensor, visualize=True)
-        except Exception as e:
-            print(f"Error processing file ply_out_{frame}.ply: {e}")
+    output_dir = args["output"]
+    visualize = args["visualize"]
+    path_to_pcaps = args["path"]
+    pcap_dirs = os.listdir(path_to_pcaps)
+    for pcap_dir in pcap_dirs:
+        path_to_ply_files_per_sensor = []
+        for count, transformation in enumerate(transformations):
+            path_to_ply_files_per_sensor.append(Path(path_to_pcaps, pcap_dir, transformation['sensor']))
+        # each sensor should have same amount of ply files (one per frame) and each frame number should match
+        pattern = re.compile(r'^ply_out_(\d{6}).ply$')
+        frames = [pattern.match(filename).group(1) for filename in os.listdir(path_to_ply_files_per_sensor[0]) if pattern.match(filename)]
+        n_frames = int(args["sample"])
+        sample_frames = random.sample(frames, n_frames)
+        # do for random sample of frames
+        for frame in tqdm(sample_frames): 
+            try:
+                main(frame, transformations, path_to_ply_files_per_sensor, output_dir, visualize)
+            except Exception as e:
+                print(f"Error processing file ply_out_{frame}.ply: {e}")
