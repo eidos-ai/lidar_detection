@@ -8,7 +8,7 @@ Currently, the command from the ouster documentation that converts pcap to ply w
 ![point cloud merge](assets/point_cloud_merge.png)
 
 ## Requirements
-1. Install requirements (compatible with labelCloud)
+1. Install requirements
 
     `$ pip install -r requirements.txt`
 
@@ -62,7 +62,7 @@ pcaps/: path to all pcap recordings
 ```
 ## Run
 
-1.  `$ python3 pcap_to_ply.py --scan_num N --path /path/to/pcaps`
+1.  `$ python pcap_to_ply.py --scan_num N --path /path/to/pcaps`
 
     This command:
     - Creates a subdirectory for each sensor 
@@ -70,12 +70,12 @@ pcaps/: path to all pcap recordings
     - Moves the generated ply files to each sensor subdirectory
 
 
-2. `$ python merge_ply_files.py --sample N --path /path/to/pcaps --out /path/to/output --visualize True`
+2. `$ python merge_ply_files.py --sample N --path /path/to/pcaps --out /path/to/output --visualize`
    
     This command:
     - Loads random ply files with same frame number from different sensors
     - Transforms point clouds: gets rotation matrix from quaternions and translates position (get from ouster extrinsics - see [Requirements](#requirements))
     - Merges point clouds and saves to output path (`"./merged_clouds/"` by default)
-    - Visualizes the merged point cloud if set to True
+    - Visualizes the merged point cloud if added to command
 
 3. Load point clouds in 3d point cloud labeling tool (labelCloud)

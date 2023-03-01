@@ -13,19 +13,23 @@ scan_num = args["scan_num"]
 
 pcap_dirs = os.listdir(path_to_pcaps)
 for pcap_dir in pcap_dirs:
-    pcap_basename = os.path.basename(pcap_dir)
-    pcap_file = Path(path_to_pcaps, pcap_dir, f"{pcap_basename}.pcap")
-    # get list of sensors 
-    sensors = [file[20:-5] for file in os.listdir(Path(path_to_pcaps, pcap_dir)) if file.endswith(".json")] 
+    try:
+        pcap_basename = os.path.basename(pcap_dir)
+        pcap_file = Path(path_to_pcaps, pcap_dir, f"{pcap_basename}.pcap")
+        # get list of sensors 
+        sensors = [file[20:-5] for file in os.listdir(Path(path_to_pcaps, pcap_dir)) if file.endswith(".json")] 
 
-    for sensor in sensors:
-        # make directory per sensor
-        dir_per_sensor = Path(path_to_pcaps, pcap_dir, sensor)
-        dir_per_sensor.mkdir(exist_ok=True, parents=True)
-        # get json config file path
-        json_file = Path(path_to_pcaps, pcap_dir, f"{pcap_basename}_{sensor}.json") 
-        # call the command to convert pcap to ply 
-        subprocess.call(["python3", "-m", "ouster.sdk.examples.pcap", pcap_file, json_file, "pcap-to-ply", "--scan-num", scan_num])
-        # Move the generated PLY files to the output directory
-        os.system(f"mv *.ply {dir_per_sensor}")
-        print(f"saved ply files to {str(dir_per_sensor)}")
+        for sensor in sensors:
+            # make directory per sensor
+            dir_per_sensor = Path(path_to_pcaps, pcap_dir, sensor)
+            dir_per_sensor.mkdir(exist_ok=True, parents=True)
+            # get json config file path
+            json_file = Path(path_to_pcaps, pcap_dir, f"{pcap_basename}_{sensor}.json") 
+            # call the command to convert pcap to ply 
+            subprocess.call(["python3", "-m", "ouster.sdk.examples.pcap", pcap_file, json_file, "pcap-to-ply", "--scan-num", scan_num])
+            # Move the generated PLY files to the output directory
+            os.system(f"mv *.ply {dir_per_sensor}")
+            print(f"saved ply files to {str(dir_per_sensor)}")
+    except Exception as e:
+        print(f"Error processing {pcap_dir}: {e}")
+        pass

@@ -9,10 +9,13 @@ import re
 from pathlib import Path
 import random
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter 
+import traceback 
+import logging
 
 logging.basicConfig(level=logging.INFO,
-    format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
-    datefmt='%H:%M:%S')
+                    format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
+                    datefmt='%H:%M:%S',
+                    force=True)
 
 def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize):
     def load_point_clouds(voxel_size=0.0):       
@@ -36,7 +39,7 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
         return pcds
 
     def pairwise_registration(source, target):
-        print("Apply point-to-plane ICP")
+        logging.info("Apply point-to-plane ICP")
         icp_coarse = o3d.pipelines.registration.registration_icp(
             source, target, max_correspondence_distance_coarse, np.identity(4),
             o3d.pipelines.registration.TransformationEstimationPointToPlane())
@@ -60,7 +63,7 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
             for target_id in range(source_id + 1, n_pcds):
                 transformation_icp, information_icp = pairwise_registration(
                     pcds[source_id], pcds[target_id])
-                print("Build o3d.pipelines.registration.PoseGraph")
+                logging.info("Build o3d.pipelines.registration.PoseGraph")
                 if target_id == source_id + 1:  # odometry case
                     odometry = np.dot(transformation_icp, odometry)
                     pose_graph.nodes.append(
@@ -88,7 +91,7 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
 
     pcds_down = load_point_clouds(voxel_size)
 
-    print("Full registration ...")
+    logging.info("Full registration ...")
     max_correspondence_distance_coarse = voxel_size * 150
     max_correspondence_distance_fine = voxel_size * 15
     with o3d.utility.VerbosityContextManager(
@@ -97,7 +100,7 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
                                     max_correspondence_distance_coarse,
                                     max_correspondence_distance_fine)
 
-    print("Optimizing PoseGraph ...")
+    logging.info("Optimizing PoseGraph ...")
     option = o3d.pipelines.registration.GlobalOptimizationOption(
         max_correspondence_distance=max_correspondence_distance_fine,
         edge_prune_threshold=.25,
@@ -116,11 +119,11 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
         merged_pcd += pcd
 
     # Save the merged point cloud
-    o3d.io.write_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply", merged_pcd)
-    print(visualize)
+    merged_point_cloud_path = str(Path(output_dir, f"merged_{pcap_dir}_{frame}.ply"))
+    o3d.io.write_point_cloud(merged_point_cloud_path, merged_pcd)
     if visualize == True:
         # Read the merged point cloud from file
-        merged_cloud = o3d.io.read_point_cloud(f"{output_dir}/merged_{pcap_dir}_{frame}.ply")
+        merged_cloud = o3d.io.read_point_cloud(merged_point_cloud_path)
 
         # Create a visualization window
         vis = o3d.visualization.Visualizer()
@@ -156,22 +159,25 @@ if __name__ == '__main__':
             'q': (-0.021351803094148636, 0.9635326266288757, -0.005909430328756571, -0.2666722238063812), 
             'p': (-0.5344054698944092, -0.015509381890296936, 6.518174171447754)}
     ]
-    output_dir = args["output"]
+    output_dir = Path(args["output"])
+    output_dir.mkdir(exist_ok=True, parents=True)
     visualize = args["visualize"]
     path_to_pcaps = args["path"]
     pcap_dirs = os.listdir(path_to_pcaps)
     for pcap_dir in pcap_dirs:
-        path_to_ply_files_per_sensor = []
-        for count, transformation in enumerate(transformations):
-            path_to_ply_files_per_sensor.append(Path(path_to_pcaps, pcap_dir, transformation['sensor']))
-        # each sensor should have same amount of ply files (one per frame) and each frame number should match
-        pattern = re.compile(r'^ply_out_(\d{6}).ply$')
-        frames = [pattern.match(filename).group(1) for filename in os.listdir(path_to_ply_files_per_sensor[0]) if pattern.match(filename)]
-        n_frames = int(args["sample"])
-        sample_frames = random.sample(frames, n_frames)
-        # do for random sample of frames
-        for frame in tqdm(sample_frames): 
-            try:
+        try:
+            path_to_ply_files_per_sensor = []
+            for count, transformation in enumerate(transformations):
+                path_to_ply_files_per_sensor.append(Path(path_to_pcaps, pcap_dir, transformation['sensor']))
+            # each sensor should have same amount of ply files (one per frame) and each frame number should match
+            pattern = re.compile(r'^ply_out_(\d{6}).ply$')
+            frames = [pattern.match(filename).group(1) for filename in os.listdir(path_to_ply_files_per_sensor[0]) if pattern.match(filename)]
+            n_frames = int(args["sample"])
+            sample_frames = random.sample(frames, n_frames)
+            # do for random sample of frames
+            for frame in tqdm(sample_frames): 
                 main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize)
-            except Exception as e:
-                print(f"Error processing file ply_out_{frame}.ply: {e}")
+        except Exception as e:
+            logging.exception(f"Error processing {pcap_dir}: {e}")
+            traceback.print_exc()
+            pass
