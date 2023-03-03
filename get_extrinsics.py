@@ -21,24 +21,6 @@ out_file = Path(args["outfile"])
 auth = HTTPBasicAuth(user, password)
 extrinsics = json.loads(requests.get(f"https://{ip}/perception/api/v1/extrinsics", verify=False, auth=auth).text)
 
-"""
-##### example response #####
-
-"transforms": [
-  {
-    "destination_frame": "world",
-    "p_x": 43.73017883300781,
-    "p_y": -2.257012367248535,
-    "p_z": 7.608055591583252,
-    "q_w": 0.2536286413669586,
-    "q_x": 0.019166436046361923,
-    "q_y": 0.9670660495758057,
-    "q_z": 0.009399726055562496,
-    "source_frame": "122216001766"
-  }
-]
-
-"""
 sensor_transformations = []
 for transform in extrinsics['transforms']:
     sensor_transformation = {}
