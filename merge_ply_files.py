@@ -11,14 +11,39 @@ import random
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter 
 import traceback 
 import logging
+import json 
 
 logging.basicConfig(level=logging.INFO,
                     format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
                     datefmt='%H:%M:%S',
                     force=True)
 
-def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize):
-    def load_point_clouds(voxel_size=0.0):       
+def main(frame, sensor_transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize):
+    """
+    Main function to register and merge point clouds.
+
+    Args:
+        frame (int): The frame number.
+        sensor_transformations (list): A list of dictionaries containing rotation quaternion and 
+                                        translation vector for each point cloud.
+        pcap_dir (str): The name of the pcap directory.
+        path_to_ply_files_per_sensor (list): A list of directories containing the ply files for each sensor.
+        output_dir (str): The directory to save the merged point cloud.
+        visualize (bool): If True, visualizes the merged point cloud.
+
+    Returns:
+        None
+    """
+    def load_point_clouds(voxel_size=0.0):
+        """
+        Loads and preprocesses point clouds.
+
+        Args:
+            voxel_size (float): Voxel size used for downsampling.
+
+        Returns:
+            list: A list of preprocessed point clouds.
+        """       
         pcds = []
         filenames = [str(Path(ply_file_path, f"ply_out_{frame}.ply")) for ply_file_path in path_to_ply_files_per_sensor]
         logging.info(f"Files: {filenames}")
@@ -31,14 +56,24 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
 
         # Translate or rotate pcd files 
         for i, pcd in enumerate(pcds):
-            q = transformations[i]['q']
-            p = transformations[i]['p']
+            q = sensor_transformations[i]['quaternion']
+            p = sensor_transformations[i]['position']
             R = pcd.get_rotation_matrix_from_quaternion(q)
             pcd = pcd.rotate(R, center=(0, 0, 0)).translate(p)
             pcds[i] = pcd
         return pcds
 
     def pairwise_registration(source, target):
+        """
+        Registers a pair of point clouds using point-to-plane ICP.
+
+        Args:
+            source (open3d.geometry.PointCloud): The source point cloud.
+            target (open3d.geometry.PointCloud): The target point cloud.
+
+        Returns:
+            tuple: A tuple containing the transformation matrix and information matrix.
+        """
         logging.info("Apply point-to-plane ICP")
         icp_coarse = o3d.pipelines.registration.registration_icp(
             source, target, max_correspondence_distance_coarse, np.identity(4),
@@ -55,6 +90,17 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
 
     def full_registration(pcds, max_correspondence_distance_coarse,
                         max_correspondence_distance_fine):
+        """
+        Performs full registration of a list of point clouds using pairwise registration and pose graph optimization.
+
+        Args:
+            pcds (list): A list of open3d.geometry.PointCloud objects to register.
+            max_correspondence_distance_coarse (float): The maximum correspondence distance for coarse ICP.
+            max_correspondence_distance_fine (float): The maximum correspondence distance for fine ICP.
+
+        Returns:
+            o3d.pipelines.registration.PoseGraph: A pose graph containing the optimized transformation matrices.
+        """
         pose_graph = o3d.pipelines.registration.PoseGraph()
         odometry = np.identity(4)
         pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(odometry))
@@ -85,28 +131,25 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
                             information_icp,
                             uncertain=True))
         return pose_graph
-
-    # Voxel size can be modified here
+        
+    # Set voxel size for downsampling
     voxel_size = 0.02
 
+    # Load point clouds and downsample using voxelization
     pcds_down = load_point_clouds(voxel_size)
 
-    logging.info("Full registration ...")
+    # Perform full registration using pairwise registration and build pose graph
     max_correspondence_distance_coarse = voxel_size * 150
     max_correspondence_distance_fine = voxel_size * 15
-    with o3d.utility.VerbosityContextManager(
-            o3d.utility.VerbosityLevel.Debug) as cm:
-        pose_graph = full_registration(pcds_down,
-                                    max_correspondence_distance_coarse,
-                                    max_correspondence_distance_fine)
+    with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+        pose_graph = full_registration(pcds_down, max_correspondence_distance_coarse, max_correspondence_distance_fine)
 
-    logging.info("Optimizing PoseGraph ...")
+    # Optimize pose graph using global optimization
     option = o3d.pipelines.registration.GlobalOptimizationOption(
         max_correspondence_distance=max_correspondence_distance_fine,
         edge_prune_threshold=.25,
         reference_node=0)
-    with o3d.utility.VerbosityContextManager(
-            o3d.utility.VerbosityLevel.Debug) as cm:
+    with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
         o3d.pipelines.registration.global_optimization(
             pose_graph,
             o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
@@ -138,45 +181,53 @@ def main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_
         # Close the visualization window
         vis.destroy_window()
 
-
 if __name__ == '__main__': 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-p", "--path", default=None, required=True, help="path to pcap folder")
-    parser.add_argument("-o", "--output", default="merged_clouds", required=False, help="output path to merged ply files")
-    parser.add_argument("-s", "--sample", required=True, help="number of random frames to convert from pcap to ply")
+    parser.add_argument("-p", "--path", type=str, default=None, required=True, help="Path to all pcaps")
+    parser.add_argument("-o", "--output", type=str, default="merged_clouds", required=False, help="Output path to merged ply files")
+    parser.add_argument("-f", "--frames", type=int, required=True, help="Amount of ply files (frames) to select randomly from each pcap path")
+    parser.add_argument("-s", "--sample", type=int, required=True, help="Amount of pcap files to select randomly from all pcaps")
+    parser.add_argument("-e", "--extrinsics", type=str, default="./extrinsics.json",required=False, help="Path to extrinsics file to define sensor_transformations")
     feature_parser = parser.add_mutually_exclusive_group(required=False)
     feature_parser.add_argument('--visualize', dest='visualize', action='store_true')
     feature_parser.add_argument('--no-visualize', dest='visualize', action='store_false')
     parser.set_defaults(feature=True)
     args = vars(parser.parse_args())
     
-    # add corresponding points and quaternions per sensor
-    transformations = [
-        {'sensor': "122216001766", 
-            'q': (0.2536286413669586, 0.019166436046361923, 0.9670660495758057, 0.009399726055562496), 
-            'p': (43.73017883300781, -2.257012367248535, 7.608055591583252)},
-        {'sensor': "122222002441", 
-            'q': (-0.021351803094148636, 0.9635326266288757, -0.005909430328756571, -0.2666722238063812), 
-            'p': (-0.5344054698944092, -0.015509381890296936, 6.518174171447754)}
-    ]
+    # Define sensor transformations from extrinsics file 
+    extrinsics_path = Path(args["extrinsics"])
+    with open(extrinsics_path) as file:
+        sensor_transformations = json.load(file)
+    
+    # Create output directory
     output_dir = Path(args["output"])
     output_dir.mkdir(exist_ok=True, parents=True)
+    
     visualize = args["visualize"]
     path_to_pcaps = args["path"]
+    n_pcap_dirs = args["sample"]
+
     pcap_dirs = os.listdir(path_to_pcaps)
-    for pcap_dir in pcap_dirs:
+    sample_pcap_dirs = random.sample(pcap_dirs, n_pcap_dirs)
+
+    # Loop over each pcap directory and process each frame
+    for pcap_dir in tqdm(sample_pcap_dirs):
         try:
+            # Get path to ply files for each sensor
             path_to_ply_files_per_sensor = []
-            for count, transformation in enumerate(transformations):
-                path_to_ply_files_per_sensor.append(Path(path_to_pcaps, pcap_dir, transformation['sensor']))
-            # each sensor should have same amount of ply files (one per frame) and each frame number should match
+            for count, transformation in enumerate(sensor_transformations):
+                path_to_ply_files_per_sensor.append(Path(path_to_pcaps, pcap_dir, transformation['name']))
+            
+            # Check that each sensor has the same number of ply files and that frame numbers match
             pattern = re.compile(r'^ply_out_(\d{6}).ply$')
             frames = [pattern.match(filename).group(1) for filename in os.listdir(path_to_ply_files_per_sensor[0]) if pattern.match(filename)]
-            n_frames = int(args["sample"])
+            n_frames = args["frames"]
             sample_frames = random.sample(frames, n_frames)
-            # do for random sample of frames
+            
+            # Randomly sample frames and process each frame
             for frame in tqdm(sample_frames): 
-                main(frame, transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize)
+                main(frame, sensor_transformations, pcap_dir, path_to_ply_files_per_sensor, output_dir, visualize)
+
         except Exception as e:
             logging.exception(f"Error processing {pcap_dir}: {e}")
             traceback.print_exc()
