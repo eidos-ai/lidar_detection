@@ -29,6 +29,7 @@ To use the scripts, follow these steps:
 
     `$ python get_extrinsics.py --user USER --password PSWD -ip 11.22.33.44`
 
+    This will prompt the user to input the indices of the desired sensors from the list of available sensors.
     Note that the name of the sensor, the quaternion and the position vector for each sensor will be saved to `./extrinsics.json` by default (unless  `--outfile` is specified).
 
 3. To use the [pcap_to_ply.py](pcap_to_ply.py) script, run the following command:
