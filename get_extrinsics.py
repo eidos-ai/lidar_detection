@@ -21,17 +21,29 @@ out_file = Path(args["outfile"])
 auth = HTTPBasicAuth(user, password)
 extrinsics = json.loads(requests.get(f"https://{ip}/perception/api/v1/extrinsics", verify=False, auth=auth).text)
 
+# Print out the different source_frames (sensors) and number them
+print("Available sensors:")
+for i, transform in enumerate(extrinsics['transforms']):
+    print(f"{i}: {transform['source_frame']}")
+
+# Prompt the user to select source_frames
+selected_indices = input("Enter the indices of the desired sensors (comma-separated): ").split(",")
+selected_source_frames = [extrinsics['transforms'][int(idx)]['source_frame'] for idx in selected_indices]
+
+# Initialize the sensor_transformations list
 sensor_transformations = []
+
+# Loop over the transforms and include only the selected source_frames
 for transform in extrinsics['transforms']:
-    sensor_transformation = {}
-    # change condition for sensors you want to use
-    if transform["source_frame"] == "122216001766" or transform["source_frame"] == "122222002441": 
+    if transform["source_frame"] in selected_source_frames:
         sensor_transformation = {
             "name": transform["source_frame"],
-            "quaternion": [transform["q_w"],transform["q_x"],transform["q_y"],transform["q_z"]],
-            "position": [transform["p_x"],transform["p_y"],transform["p_z"]]
+            "quaternion": [transform["q_w"], transform["q_x"], transform["q_y"], transform["q_z"]],
+            "position": [transform["p_x"], transform["p_y"], transform["p_z"]]
         }
-        sensor_transformations.append(sensor_transformation) 
+        sensor_transformations.append(sensor_transformation)
 
+# Save the selected sensor_transformations
 with open(str(out_file),'w') as f:
     json.dump(sensor_transformations, f, separators=(',', ':'))
+print(f"Saved sensor transformations for {selected_source_frames}")
